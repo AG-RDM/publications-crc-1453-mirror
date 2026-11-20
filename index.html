@@ -13,27 +13,34 @@
 
     <header class="site-header">
       <div class="header-inner">
-        <a class="brand" href="./">TR-359 <span>Publications</span></a>
+        <a class="brand" href="./">
+          <span class="brand-mark" aria-hidden="true">TR</span>
+          <span><strong>Research Publications</strong><small>Collection TR-359</small></span>
+        </a>
         <nav aria-label="External links">
-          <a href="https://fredato.imbi.uni-freiburg.de/public/publications/tr-359" target="_blank" rel="noreferrer">View source in FREDATO</a>
+          <a href="https://fredato.imbi.uni-freiburg.de/public/publications/tr-359" target="_blank" rel="noreferrer">Source: FREDATO <span aria-hidden="true">↗</span></a>
         </nav>
       </div>
     </header>
 
     <main>
       <section class="search-section" aria-labelledby="page-title">
-        <h1 id="page-title">Search publications</h1>
-        <p>Publications and associated research data from the public TR-359 collection.</p>
+        <div class="search-heading">
+          <div>
+            <h1 id="page-title">Publication catalogue</h1>
+            <p>Explore publications and associated research datasets.</p>
+          </div>
+          <div class="source-status" aria-live="polite">
+            <span id="status-dot" class="status-dot"></span>
+            <span id="sync-status">Loading current data from FREDATO</span>
+            <button id="refresh-data" type="button">Refresh</button>
+          </div>
+        </div>
         <form id="search-form" class="search-form" role="search">
           <label class="sr-only" for="search">Search publications</label>
           <input id="search" type="search" placeholder="Search title, author, DOI, journal, topic, or dataset" autocomplete="off">
           <button type="submit">Search</button>
         </form>
-        <div class="source-status" aria-live="polite">
-          <span id="status-dot" class="status-dot"></span>
-          <span id="sync-status">Loading current data from FREDATO</span>
-          <button id="refresh-data" type="button">Refresh</button>
-        </div>
       </section>
 
       <div class="content-layout">
