@@ -1,32 +1,41 @@
 const API_URL = "https://fredato.imbi.uni-freiburg.de/public/api/publications/tr-359";
 
+const FACETS = {
+  year: { label: "Publication year", limit: 8, sort: (a, b) => Number(b) - Number(a) },
+  data: { label: "Data availability", limit: 5 },
+  organism: { label: "Organism", limit: 8 },
+  material: { label: "Research material", limit: 8 },
+  method: { label: "Method / readout", limit: 8 },
+  intervention: { label: "Intervention", limit: 8 },
+  journal: { label: "Journal", limit: 8 },
+  topic: { label: "Publication topic", limit: 8 },
+};
+
 const state = {
-  publications: [],
-  filters: { search: "", year: "", journal: "", feature: "", data: "", sort: "year-desc" },
+  records: [],
+  search: "",
+  sort: "year-desc",
+  selected: Object.fromEntries(Object.keys(FACETS).map((key) => [key, new Set()])),
+  expanded: new Set(),
 };
 
 const elements = {
+  searchForm: document.querySelector("#search-form"),
+  search: document.querySelector("#search"),
+  facets: document.querySelector("#facet-list"),
+  activeFilters: document.querySelector("#active-filters"),
+  reset: document.querySelector("#reset-filters"),
+  sort: document.querySelector("#sort-filter"),
   list: document.querySelector("#publication-list"),
   loading: document.querySelector("#loading"),
   error: document.querySelector("#error"),
   empty: document.querySelector("#empty"),
   resultCount: document.querySelector("#result-count"),
-  publicationCount: document.querySelector("#publication-count"),
-  datasetCount: document.querySelector("#dataset-count"),
-  yearRange: document.querySelector("#year-range"),
+  resultSummary: document.querySelector("#result-summary"),
   statusDot: document.querySelector("#status-dot"),
   syncStatus: document.querySelector("#sync-status"),
-  lastUpdated: document.querySelector("#last-updated"),
   refresh: document.querySelector("#refresh-data"),
-};
-
-const filterElements = {
-  search: document.querySelector("#search"),
-  year: document.querySelector("#year-filter"),
-  journal: document.querySelector("#journal-filter"),
-  feature: document.querySelector("#feature-filter"),
-  data: document.querySelector("#data-filter"),
-  sort: document.querySelector("#sort-filter"),
+  lastUpdated: document.querySelector("#last-updated"),
 };
 
 function escapeHtml(value = "") {
@@ -45,32 +54,86 @@ function safeUrl(value) {
   }
 }
 
-function getDatasets(publication) {
-  return Array.isArray(publication.dataSources?.dataSource) ? publication.dataSources.dataSource : [];
+function datasetsFor(item) {
+  return Array.isArray(item.dataSources?.dataSource) ? item.dataSources.dataSource : [];
 }
 
-function getFeatures(publication) {
-  return [...new Set(getDatasets(publication).flatMap((dataset) =>
-    (dataset.chips || []).map((chip) => chip.title).filter(Boolean),
-  ))];
+function unique(values) {
+  return [...new Set(values.filter(Boolean))];
 }
 
-function searchableText(publication) {
-  const entry = publication.publication || {};
-  const authors = (entry.authors || []).flatMap((author) => [author.givenName, author.familyName, author.orcid]);
-  const classes = (entry.publicationClasses || []).map((item) => item.display);
-  const datasets = getDatasets(publication).flatMap((dataset) => [
-    dataset.name, dataset.description, dataset.publicationService,
+function categorizeChips(datasets) {
+  const categories = { organism: [], material: [], method: [], intervention: [] };
+
+  datasets.flatMap((dataset) => dataset.chips || []).forEach((chip) => {
+    const tooltip = (chip.tooltip || "").toLocaleLowerCase("en");
+    if (!chip.title) return;
+
+    if (tooltip.includes("organism")) categories.organism.push(chip.title);
+    if (["tissue", "blood component", "cell type", "sample preparation", "cell line"].some((term) => tooltip.includes(term))) {
+      categories.material.push(chip.title);
+    }
+    if (["read out", "readout", "sequencing"].some((term) => tooltip.includes(term))) {
+      categories.method.push(chip.title);
+    }
+    if (["intervention", "target gene", "infection"].some((term) => tooltip.includes(term))) {
+      categories.intervention.push(chip.title);
+    }
+  });
+
+  return Object.fromEntries(Object.entries(categories).map(([key, values]) => [key, unique(values)]));
+}
+
+function normalizeRecord(item) {
+  const publication = item.publication || {};
+  const datasets = datasetsFor(item);
+  const chips = categorizeChips(datasets);
+  const authors = (publication.authors || []).map((author) =>
+    [author.givenName, author.familyName].filter(Boolean).join(" "),
+  ).filter(Boolean);
+  const topics = unique((publication.publicationClasses || []).map((entry) => entry.display));
+  const datasetText = datasets.flatMap((dataset) => [
+    dataset.name,
+    dataset.description,
+    dataset.publicationService,
     ...(dataset.chips || []).flatMap((chip) => [chip.title, chip.tooltip]),
   ]);
-  return [entry.publicationTitle, entry.journalTitle, entry.publicationYear, entry.doi, ...authors, ...classes, ...datasets]
-    .filter(Boolean).join(" ").toLocaleLowerCase("de");
+  const data = [];
+  if (datasets.some((dataset) => dataset.isPublished)) data.push("Published data");
+  if (datasets.some((dataset) => !dataset.isPublished)) data.push("Data on request");
+  if (datasets.length === 0) data.push("No linked datasets");
+
+  return {
+    item,
+    publication,
+    datasets,
+    authors,
+    facets: {
+      year: publication.publicationYear ? [publication.publicationYear] : [],
+      data,
+      organism: chips.organism,
+      material: chips.material,
+      method: chips.method,
+      intervention: chips.intervention,
+      journal: publication.journalTitle ? [publication.journalTitle] : [],
+      topic: topics,
+    },
+    searchText: [
+      publication.publicationTitle,
+      publication.journalTitle,
+      publication.publicationYear,
+      publication.doi,
+      ...authors,
+      ...topics,
+      ...datasetText,
+    ].filter(Boolean).join(" ").toLocaleLowerCase("en"),
+  };
 }
 
 async function fetchPage(page) {
   const params = new URLSearchParams({ currentPage: page, filterByDatasources: "false" });
   const response = await fetch(`${API_URL}?${params}`, { cache: "no-store" });
-  if (!response.ok) throw new Error(`FREDATO antwortet mit Status ${response.status}.`);
+  if (!response.ok) throw new Error(`FREDATO returned HTTP ${response.status}.`);
   return response.json();
 }
 
@@ -78,169 +141,218 @@ async function loadPublications() {
   elements.loading.hidden = false;
   elements.error.hidden = true;
   elements.refresh.disabled = true;
-  elements.syncStatus.textContent = "Daten werden geladen";
-  elements.statusDot.className = "";
+  elements.statusDot.className = "status-dot";
+  elements.syncStatus.textContent = "Loading current data from FREDATO";
 
   try {
-    const firstPage = await fetchPage(1);
-    const lastPage = firstPage.pagination?.lastPage || 1;
-    const remainingPages = await Promise.all(
-      Array.from({ length: Math.max(0, lastPage - 1) }, (_, index) => fetchPage(index + 2)),
+    const first = await fetchPage(1);
+    const remaining = await Promise.all(
+      Array.from({ length: Math.max(0, (first.pagination?.lastPage || 1) - 1) }, (_, index) => fetchPage(index + 2)),
     );
-    state.publications = [firstPage, ...remainingPages].flatMap((page) => page.results || []);
-    populateFilters();
-    updateSummary();
-    render();
+    state.records = [first, ...remaining].flatMap((page) => page.results || []).map(normalizeRecord);
 
     const now = new Date();
     elements.lastUpdated.dateTime = now.toISOString();
-    elements.lastUpdated.textContent = now.toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" });
-    elements.syncStatus.textContent = "Live mit FREDATO verbunden";
-    elements.statusDot.className = "online";
+    elements.lastUpdated.textContent = now.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+    elements.statusDot.className = "status-dot online";
+    elements.syncStatus.textContent = `${state.records.length} publications loaded from FREDATO`;
+    render();
   } catch (error) {
     elements.error.hidden = false;
-    elements.error.innerHTML = `<strong>Daten konnten nicht geladen werden.</strong><br>${escapeHtml(error.message)} Bitte versuche es später erneut.`;
-    elements.syncStatus.textContent = "Verbindung fehlgeschlagen";
-    elements.statusDot.className = "error";
+    elements.error.textContent = `Publications could not be loaded. ${error.message}`;
+    elements.statusDot.className = "status-dot error";
+    elements.syncStatus.textContent = "Could not connect to FREDATO";
   } finally {
     elements.loading.hidden = true;
     elements.refresh.disabled = false;
   }
 }
 
-function setOptions(select, values, initialLabel) {
-  const current = select.value;
-  select.replaceChildren(new Option(initialLabel, ""));
-  values.forEach((value) => select.add(new Option(value, value)));
-  select.value = values.includes(current) ? current : "";
-}
-
-function populateFilters() {
-  const years = [...new Set(state.publications.map((item) => item.publication?.publicationYear).filter(Boolean))]
-    .sort((a, b) => Number(b) - Number(a));
-  const journals = [...new Set(state.publications.map((item) => item.publication?.journalTitle).filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b, "de"));
-  const features = [...new Set(state.publications.flatMap(getFeatures))]
-    .sort((a, b) => a.localeCompare(b, "de"));
-
-  setOptions(filterElements.year, years, "Alle Jahre");
-  setOptions(filterElements.journal, journals, "Alle Journals");
-  setOptions(filterElements.feature, features, "Alle Merkmale");
-}
-
-function updateSummary() {
-  const years = state.publications.map((item) => Number(item.publication?.publicationYear)).filter(Boolean);
-  const datasets = state.publications.flatMap(getDatasets);
-  elements.publicationCount.textContent = state.publications.length.toLocaleString("de-DE");
-  elements.datasetCount.textContent = datasets.length.toLocaleString("de-DE");
-  elements.yearRange.textContent = years.length ? `${Math.min(...years)}–${Math.max(...years)}` : "–";
-}
-
-function matchesDataFilter(publication, filter) {
-  if (!filter) return true;
-  const datasets = getDatasets(publication);
-  if (filter === "published") return datasets.some((dataset) => dataset.isPublished);
-  if (filter === "request") return datasets.some((dataset) => !dataset.isPublished);
-  return datasets.length === 0;
-}
-
-function getFilteredPublications() {
-  const query = state.filters.search.trim().toLocaleLowerCase("de");
-  const filtered = state.publications.filter((item) => {
-    const publication = item.publication || {};
-    return (!query || searchableText(item).includes(query))
-      && (!state.filters.year || publication.publicationYear === state.filters.year)
-      && (!state.filters.journal || publication.journalTitle === state.filters.journal)
-      && (!state.filters.feature || getFeatures(item).includes(state.filters.feature))
-      && matchesDataFilter(item, state.filters.data);
-  });
-
-  return filtered.sort((a, b) => {
-    if (state.filters.sort === "year-asc") return Number(a.publication?.publicationYear) - Number(b.publication?.publicationYear);
-    if (state.filters.sort === "title-asc") return (a.publication?.publicationTitle || "").localeCompare(b.publication?.publicationTitle || "", "de");
-    if (state.filters.sort === "datasets-desc") return getDatasets(b).length - getDatasets(a).length;
-    return Number(b.publication?.publicationYear) - Number(a.publication?.publicationYear);
+function matchesFilters(record, exceptFacet = "") {
+  if (state.search && !record.searchText.includes(state.search)) return false;
+  return Object.entries(state.selected).every(([facet, selected]) => {
+    if (facet === exceptFacet || selected.size === 0) return true;
+    return record.facets[facet].some((value) => selected.has(value));
   });
 }
 
-function authorLabel(author) {
-  return [author.givenName, author.familyName].filter(Boolean).join(" ");
+function facetValues(facet) {
+  return unique(state.records.flatMap((record) => record.facets[facet]));
 }
 
-function datasetLink(dataset) {
+function facetCounts(facet) {
+  const counts = new Map();
+  state.records.filter((record) => matchesFilters(record, facet)).forEach((record) => {
+    record.facets[facet].forEach((value) => counts.set(value, (counts.get(value) || 0) + 1));
+  });
+  return counts;
+}
+
+function sortedFacetValues(facet) {
+  const config = FACETS[facet];
+  const counts = facetCounts(facet);
+  return facetValues(facet).sort(config.sort || ((a, b) =>
+    (counts.get(b) || 0) - (counts.get(a) || 0) || a.localeCompare(b, "en")
+  ));
+}
+
+function renderFacets() {
+  elements.facets.innerHTML = Object.entries(FACETS).map(([facet, config]) => {
+    const allValues = sortedFacetValues(facet);
+    const selected = state.selected[facet];
+    const isExpanded = state.expanded.has(facet);
+    const visibleValues = isExpanded
+      ? allValues
+      : allValues.filter((value, index) => index < config.limit || selected.has(value));
+    const counts = facetCounts(facet);
+
+    return `
+      <section class="facet-group" aria-labelledby="facet-${facet}">
+        <h3 id="facet-${facet}">${escapeHtml(config.label)}</h3>
+        <div class="facet-options">
+          ${visibleValues.map((value) => `
+            <label class="facet-option">
+              <input type="checkbox" data-facet="${facet}" data-value="${escapeHtml(value)}" ${selected.has(value) ? "checked" : ""} ${(counts.get(value) || 0) === 0 && !selected.has(value) ? "disabled" : ""}>
+              <span class="label">${escapeHtml(value)}</span>
+              <span class="count">${counts.get(value) || 0}</span>
+            </label>`).join("")}
+        </div>
+        ${allValues.length > config.limit ? `<button class="facet-more" type="button" data-expand="${facet}">${isExpanded ? "Show less" : `Show all (${allValues.length})`}</button>` : ""}
+      </section>`;
+  }).join("");
+}
+
+function renderActiveFilters() {
+  const filters = Object.entries(state.selected).flatMap(([facet, values]) =>
+    [...values].map((value) => ({ facet, value })),
+  );
+  elements.activeFilters.innerHTML = filters.map(({ facet, value }) => `
+    <button class="active-filter" type="button" data-remove-facet="${facet}" data-remove-value="${escapeHtml(value)}" title="Remove filter">
+      <span>${escapeHtml(value)}</span> ×
+    </button>`).join("");
+  elements.reset.hidden = filters.length === 0 && !state.search;
+}
+
+function filteredRecords() {
+  const records = state.records.filter((record) => matchesFilters(record));
+  return records.sort((a, b) => {
+    if (state.sort === "year-asc") return Number(a.publication.publicationYear) - Number(b.publication.publicationYear);
+    if (state.sort === "title-asc") return (a.publication.publicationTitle || "").localeCompare(b.publication.publicationTitle || "", "en");
+    if (state.sort === "datasets-desc") return b.datasets.length - a.datasets.length;
+    return Number(b.publication.publicationYear) - Number(a.publication.publicationYear)
+      || (a.publication.publicationTitle || "").localeCompare(b.publication.publicationTitle || "", "en");
+  });
+}
+
+function datasetUrl(dataset) {
   if (dataset.identifier?.url) return safeUrl(dataset.identifier.url);
   if (dataset.identifier?.doi) return safeUrl(`https://doi.org/${dataset.identifier.doi}`);
   return "";
 }
 
 function renderDataset(dataset) {
-  const link = datasetLink(dataset);
-  const chips = [...new Set((dataset.chips || []).map((chip) => chip.title).filter(Boolean))].slice(0, 12);
+  const url = datasetUrl(dataset);
+  const features = unique((dataset.chips || []).map((chip) => chip.title)).slice(0, 10);
   return `
-    <article class="dataset ${dataset.isPublished ? "published" : ""}">
-      <div class="dataset-head">
-        <strong>${escapeHtml(dataset.name || dataset.publicationService || "Datensatz")}</strong>
-        ${link ? `<a href="${escapeHtml(link)}" target="_blank" rel="noreferrer">${escapeHtml(dataset.publicationService || "Öffnen")} ↗</a>` : `<span class="tag request">Auf Anfrage</span>`}
-      </div>
-      ${chips.length ? `<div class="dataset-chips">${chips.map((chip) => `<span>${escapeHtml(chip)}</span>`).join("")}</div>` : ""}
-    </article>`;
+    <li>
+      <span class="dataset-name">${escapeHtml(dataset.name || "Dataset")}</span>
+      <span>${escapeHtml(dataset.publicationService || (dataset.isPublished ? "Published" : "On request"))}</span>
+      ${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">Open dataset</a>` : ""}
+      ${features.length ? `<span class="dataset-features">${features.map(escapeHtml).join(" · ")}</span>` : ""}
+    </li>`;
 }
 
-function renderPublication(item) {
-  const publication = item.publication || {};
-  const datasets = getDatasets(item);
-  const publishedCount = datasets.filter((dataset) => dataset.isPublished).length;
-  const requestCount = datasets.length - publishedCount;
+function renderPublication(record) {
+  const publication = record.publication;
   const doiUrl = publication.doi ? safeUrl(`https://doi.org/${publication.doi}`) : "";
-  const authors = (publication.authors || []).map(authorLabel).filter(Boolean);
-  const visibleAuthors = authors.slice(0, 8).join(", ") + (authors.length > 8 ? ` + ${authors.length - 8} weitere` : "");
-  const features = getFeatures(item).slice(0, 5);
+  const published = record.datasets.filter((dataset) => dataset.isPublished).length;
+  const requested = record.datasets.length - published;
+  const authors = record.authors.length > 12
+    ? `${record.authors.slice(0, 12).join(", ")} et al.`
+    : record.authors.join(", ");
+  const topics = record.facets.topic.slice(0, 4);
 
   return `
-    <article class="publication-card">
-      <div class="publication-year">${escapeHtml(publication.publicationYear || "–")}</div>
-      <div class="publication-main">
-        ${publication.journalTitle ? `<p class="journal">${escapeHtml(publication.journalTitle)}</p>` : ""}
-        <h3>${doiUrl ? `<a href="${escapeHtml(doiUrl)}" target="_blank" rel="noreferrer">${escapeHtml(publication.publicationTitle || "Ohne Titel")}</a>` : escapeHtml(publication.publicationTitle || "Ohne Titel")}</h3>
-        ${visibleAuthors ? `<p class="authors">${escapeHtml(visibleAuthors)}</p>` : ""}
-        <div class="card-meta">
-          ${publishedCount ? `<span class="tag data">${publishedCount} veröffentlicht${publishedCount === 1 ? "er Datensatz" : "e Datensätze"}</span>` : ""}
-          ${requestCount ? `<span class="tag request">${requestCount} auf Anfrage</span>` : ""}
-          ${features.map((feature) => `<span class="tag">${escapeHtml(feature)}</span>`).join("")}
+    <li class="publication-item">
+      <article>
+        <h3>${doiUrl ? `<a href="${escapeHtml(doiUrl)}" target="_blank" rel="noreferrer">${escapeHtml(publication.publicationTitle || "Untitled publication")}</a>` : escapeHtml(publication.publicationTitle || "Untitled publication")}</h3>
+        ${authors ? `<p class="authors">${escapeHtml(authors)}</p>` : ""}
+        <p class="citation">
+          ${publication.journalTitle ? `${escapeHtml(publication.journalTitle)}. ` : ""}${escapeHtml(publication.publicationYear || "")}${publication.doi ? `; <span class="identifier">doi: ${escapeHtml(publication.doi)}</span>` : ""}
+        </p>
+        <div class="metadata-row">
+          ${published ? `<span class="metadata-tag published">${published} published dataset${published === 1 ? "" : "s"}</span>` : ""}
+          ${requested ? `<span class="metadata-tag request">${requested} dataset${requested === 1 ? "" : "s"} on request</span>` : ""}
+          ${topics.map((topic) => `<span class="metadata-tag">${escapeHtml(topic)}</span>`).join("")}
         </div>
-      </div>
-      <div class="publication-action">
-        ${doiUrl ? `<a class="doi-link" href="${escapeHtml(doiUrl)}" target="_blank" rel="noreferrer" aria-label="DOI öffnen" title="DOI öffnen">↗</a>` : ""}
-      </div>
-      ${datasets.length ? `<details class="datasets"><summary>${datasets.length} zugehörige${datasets.length === 1 ? "n Datensatz" : " Datensätze"} anzeigen</summary><div class="dataset-grid">${datasets.map(renderDataset).join("")}</div></details>` : ""}
-    </article>`;
+        ${record.datasets.length ? `
+          <details class="dataset-details">
+            <summary>Show ${record.datasets.length} associated dataset${record.datasets.length === 1 ? "" : "s"}</summary>
+            <ul class="dataset-list">${record.datasets.map(renderDataset).join("")}</ul>
+          </details>` : ""}
+      </article>
+    </li>`;
+}
+
+function renderResults() {
+  const records = filteredRecords();
+  const datasetCount = records.reduce((total, record) => total + record.datasets.length, 0);
+  elements.resultCount.textContent = records.length.toLocaleString("en-GB");
+  elements.resultSummary.textContent = `${datasetCount.toLocaleString("en-GB")} associated datasets`;
+  elements.list.innerHTML = records.map(renderPublication).join("");
+  elements.empty.hidden = records.length !== 0 || state.records.length === 0;
 }
 
 function render() {
-  const publications = getFilteredPublications();
-  elements.resultCount.textContent = publications.length.toLocaleString("de-DE");
-  elements.list.innerHTML = publications.map(renderPublication).join("");
-  elements.empty.hidden = publications.length !== 0 || state.publications.length === 0;
+  renderFacets();
+  renderActiveFilters();
+  renderResults();
 }
 
-Object.entries(filterElements).forEach(([name, element]) => {
-  element.addEventListener(name === "search" ? "input" : "change", () => {
-    state.filters[name] = element.value;
-    render();
-  });
-});
-
-document.querySelector("#reset-filters").addEventListener("click", () => {
-  state.filters = { search: "", year: "", journal: "", feature: "", data: "", sort: "year-desc" };
-  Object.entries(filterElements).forEach(([name, element]) => { element.value = state.filters[name]; });
+elements.searchForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  state.search = elements.search.value.trim().toLocaleLowerCase("en");
   render();
 });
 
-document.addEventListener("keydown", (event) => {
-  if (event.key === "/" && document.activeElement?.tagName !== "INPUT") {
-    event.preventDefault();
-    filterElements.search.focus();
-  }
+elements.search.addEventListener("search", () => {
+  state.search = elements.search.value.trim().toLocaleLowerCase("en");
+  render();
+});
+
+elements.sort.addEventListener("change", () => {
+  state.sort = elements.sort.value;
+  renderResults();
+});
+
+elements.facets.addEventListener("change", (event) => {
+  const input = event.target.closest("input[data-facet]");
+  if (!input) return;
+  const values = state.selected[input.dataset.facet];
+  input.checked ? values.add(input.dataset.value) : values.delete(input.dataset.value);
+  render();
+});
+
+elements.facets.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-expand]");
+  if (!button) return;
+  const facet = button.dataset.expand;
+  state.expanded.has(facet) ? state.expanded.delete(facet) : state.expanded.add(facet);
+  renderFacets();
+});
+
+elements.activeFilters.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-remove-facet]");
+  if (!button) return;
+  state.selected[button.dataset.removeFacet].delete(button.dataset.removeValue);
+  render();
+});
+
+elements.reset.addEventListener("click", () => {
+  Object.values(state.selected).forEach((values) => values.clear());
+  state.search = "";
+  elements.search.value = "";
+  render();
 });
 
 elements.refresh.addEventListener("click", loadPublications);

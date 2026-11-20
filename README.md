@@ -10,7 +10,8 @@ jeweils aktuellen Stand.
 ## Funktionen
 
 - Volltextsuche über Titel, Autor:innen, DOI, Journal und Datenmerkmale
-- Filter nach Jahr, Journal, Datenmerkmal und Veröffentlichungsstatus
+- Facetten nach Jahr, Datenstatus, Organismus, Material, Methode, Intervention,
+  Journal und Publikationsthema
 - Sortierung nach Jahr, Titel oder Anzahl der Datensätze
 - Detailansicht veröffentlichter und auf Anfrage verfügbarer Datensätze
 - Responsive, barrierearme statische Website ohne Backend
