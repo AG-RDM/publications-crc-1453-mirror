@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Durchsuchbare Ansicht der öffentlichen FREDATO-Publikationsliste tr-359">
+    <title>Publikationen | TR-359</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#results">Zu den Ergebnissen</a>
+
+    <header class="hero">
+      <nav class="nav" aria-label="Seitennavigation">
+        <a class="brand" href="./" aria-label="Startseite">
+          <span class="brand-mark" aria-hidden="true">R</span>
+          <span>Research Data<br><strong>Publications</strong></span>
+        </a>
+        <a class="source-link" href="https://fredato.imbi.uni-freiburg.de/public/publications/tr-359" target="_blank" rel="noreferrer">
+          Original in FREDATO <span aria-hidden="true">↗</span>
+        </a>
+      </nav>
+
+      <div class="hero-content">
+        <p class="eyebrow">Öffentliche Publikationssammlung · TR-359</p>
+        <h1>Forschung entdecken.<br><em>Daten verstehen.</em></h1>
+        <p class="intro">Eine filterbare Ansicht der Publikationen und zugehörigen Forschungsdaten. Die Inhalte werden bei jedem Aufruf live aus FREDATO geladen.</p>
+      </div>
+
+      <div class="status-strip" aria-live="polite">
+        <div><strong id="publication-count">–</strong><span>Publikationen</span></div>
+        <div><strong id="dataset-count">–</strong><span>Datensätze</span></div>
+        <div><strong id="year-range">–</strong><span>Zeitraum</span></div>
+        <div class="live-status"><i id="status-dot"></i><span id="sync-status">Daten werden geladen</span></div>
+      </div>
+    </header>
+
+    <main>
+      <section class="filter-panel" aria-labelledby="filter-title">
+        <div class="filter-heading">
+          <div>
+            <p class="section-number">01 / Suche</p>
+            <h2 id="filter-title">Publikationen filtern</h2>
+          </div>
+          <button id="reset-filters" class="text-button" type="button">Alle Filter zurücksetzen</button>
+        </div>
+
+        <div class="search-wrap">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m21 21-4.35-4.35m2.35-5.65a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/></svg>
+          <label class="sr-only" for="search">Publikationen durchsuchen</label>
+          <input id="search" type="search" placeholder="Titel, Autor:in, DOI, Journal oder Datenmerkmal …" autocomplete="off">
+          <kbd>/</kbd>
+        </div>
+
+        <div class="filter-grid">
+          <label>Jahr<select id="year-filter"><option value="">Alle Jahre</option></select></label>
+          <label>Journal<select id="journal-filter"><option value="">Alle Journals</option></select></label>
+          <label>Datenmerkmal<select id="feature-filter"><option value="">Alle Merkmale</option></select></label>
+          <label>Datenstatus
+            <select id="data-filter">
+              <option value="">Alle Datensätze</option>
+              <option value="published">Veröffentlicht</option>
+              <option value="request">Auf Anfrage</option>
+              <option value="none">Keine Datenangabe</option>
+            </select>
+          </label>
+          <label>Sortierung
+            <select id="sort-filter">
+              <option value="year-desc">Neueste zuerst</option>
+              <option value="year-asc">Älteste zuerst</option>
+              <option value="title-asc">Titel A–Z</option>
+              <option value="datasets-desc">Meiste Datensätze</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section id="results" class="results-section" aria-labelledby="results-title">
+        <div class="results-heading">
+          <div>
+            <p class="section-number">02 / Ergebnisse</p>
+            <h2 id="results-title"><span id="result-count">0</span> Treffer</h2>
+          </div>
+          <button id="refresh-data" class="refresh-button" type="button" title="Live-Daten erneut laden">
+            <span aria-hidden="true">↻</span> Aktualisieren
+          </button>
+        </div>
+
+        <div id="loading" class="loading-state">
+          <div class="loader" aria-hidden="true"></div>
+          <p>Publikationen werden direkt aus FREDATO geladen …</p>
+        </div>
+        <div id="error" class="error-state" hidden></div>
+        <div id="publication-list" class="publication-list"></div>
+        <div id="empty" class="empty-state" hidden>
+          <span>∅</span>
+          <h3>Keine passenden Publikationen</h3>
+          <p>Versuche andere Suchbegriffe oder setze die Filter zurück.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <p>Alternative Darstellung öffentlicher Metadaten aus <a href="https://fredato.imbi.uni-freiburg.de/public/publications/tr-359" target="_blank" rel="noreferrer">FREDATO</a>.</p>
+      <p>Keine lokale Kopie · Live-Stand: <time id="last-updated">–</time></p>
+    </footer>
+  </body>
+</html>
