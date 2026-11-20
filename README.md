@@ -26,6 +26,6 @@ npx serve .
 
 ## GitHub Pages
 
-Der Workflow `.github/workflows/deploy-pages.yml` veröffentlicht die Website
+Der Workflow `.github/workflows/static.yml` veröffentlicht die Website
 bei jedem Push auf `main`. Im Repository muss unter **Settings → Pages** als
 Quelle **GitHub Actions** ausgewählt sein.
