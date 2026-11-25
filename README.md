@@ -5,7 +5,9 @@ Eine alternative, filterbare Darstellung der öffentlichen Publikationsliste
 
 Die Website speichert keine Kopie der Publikationsdaten. Beim Aufruf lädt sie
 alle Seiten der öffentlichen FREDATO-API direkt im Browser und zeigt daher den
-jeweils aktuellen Stand.
+jeweils aktuellen Stand. Die API-Seiten werden nacheinander und mit
+automatischen Wiederholungsversuchen geladen, um das Rate-Limit des
+CRC-1453-Servers einzuhalten.
 
 ## Funktionen
 
