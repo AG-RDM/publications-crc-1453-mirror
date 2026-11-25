@@ -1,7 +1,7 @@
-# FREDATO Publications TR-359
+# FREDATO Publications CRC 1453
 
 Eine alternative, filterbare Darstellung der öffentlichen Publikationsliste
-[`tr-359`](https://fredato.imbi.uni-freiburg.de/public/publications/tr-359).
+[`1453`](https://fredato-1453.imbi.uni-freiburg.de/public/publications/1453).
 
 Die Website speichert keine Kopie der Publikationsdaten. Beim Aufruf lädt sie
 alle Seiten der öffentlichen FREDATO-API direkt im Browser und zeigt daher den

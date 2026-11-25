@@ -1,4 +1,4 @@
-const API_URL = "https://fredato.imbi.uni-freiburg.de/public/api/publications/tr-359";
+const API_URL = "https://fredato-1453.imbi.uni-freiburg.de/public/api/publications/1453";
 
 const FACETS = {
   year: { label: "Publication year", limit: 8, sort: (a, b) => Number(b) - Number(a) },
@@ -99,8 +99,11 @@ function normalizeRecord(item) {
     ...(dataset.chips || []).flatMap((chip) => [chip.title, chip.tooltip]),
   ]);
   const data = [];
-  if (datasets.some((dataset) => dataset.isPublished)) data.push("Published data");
-  if (datasets.some((dataset) => !dataset.isPublished)) data.push("Data on request");
+  if (datasets.some((dataset) => dataset.isPublished === true)) data.push("Published data");
+  if (datasets.some((dataset) => dataset.isPublished === false)) data.push("Data on request");
+  if (datasets.some((dataset) => dataset.isPublished !== true && dataset.isPublished !== false)) {
+    data.push("Availability not specified");
+  }
   if (datasets.length === 0) data.push("No linked datasets");
 
   return {
@@ -250,13 +253,19 @@ function datasetUrl(dataset) {
   return "";
 }
 
+function datasetAvailability(dataset) {
+  if (dataset.isPublished === true) return "Published";
+  if (dataset.isPublished === false) return "On request";
+  return "Availability not specified";
+}
+
 function renderDataset(dataset) {
   const url = datasetUrl(dataset);
   const features = unique((dataset.chips || []).map((chip) => chip.title)).slice(0, 10);
   return `
     <li>
       <span class="dataset-name">${escapeHtml(dataset.name || "Dataset")}</span>
-      <span>${escapeHtml(dataset.publicationService || (dataset.isPublished ? "Published" : "On request"))}</span>
+      <span>${escapeHtml(dataset.publicationService || datasetAvailability(dataset))}</span>
       ${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">Open dataset</a>` : ""}
       ${features.length ? `<span class="dataset-features">${features.map(escapeHtml).join(" · ")}</span>` : ""}
     </li>`;
@@ -265,8 +274,9 @@ function renderDataset(dataset) {
 function renderPublication(record) {
   const publication = record.publication;
   const doiUrl = publication.doi ? safeUrl(`https://doi.org/${publication.doi}`) : "";
-  const published = record.datasets.filter((dataset) => dataset.isPublished).length;
-  const requested = record.datasets.length - published;
+  const published = record.datasets.filter((dataset) => dataset.isPublished === true).length;
+  const requested = record.datasets.filter((dataset) => dataset.isPublished === false).length;
+  const unspecified = record.datasets.length - published - requested;
   const authors = record.authors.length > 12
     ? `${record.authors.slice(0, 12).join(", ")} et al.`
     : record.authors.join(", ");
@@ -283,6 +293,7 @@ function renderPublication(record) {
         <div class="metadata-row">
           ${published ? `<span class="metadata-tag published">${published} published dataset${published === 1 ? "" : "s"}</span>` : ""}
           ${requested ? `<span class="metadata-tag request">${requested} dataset${requested === 1 ? "" : "s"} on request</span>` : ""}
+          ${unspecified ? `<span class="metadata-tag">${unspecified} dataset${unspecified === 1 ? "" : "s"} with unspecified availability</span>` : ""}
           ${topics.map((topic) => `<span class="metadata-tag">${escapeHtml(topic)}</span>`).join("")}
         </div>
         ${record.datasets.length ? `
