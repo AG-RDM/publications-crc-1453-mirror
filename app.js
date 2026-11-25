@@ -1,4 +1,6 @@
 const API_URL = "https://fredato-1453.imbi.uni-freiburg.de/public/api/publications/1453";
+const PAGE_DELAY_MS = 250;
+const MAX_FETCH_ATTEMPTS = 4;
 
 const FACETS = {
   year: { label: "Publication year", limit: 8, sort: (a, b) => Number(b) - Number(a) },
@@ -60,6 +62,10 @@ function datasetsFor(item) {
 
 function unique(values) {
   return [...new Set(values.filter(Boolean))];
+}
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function categorizeChips(datasets) {
@@ -135,9 +141,28 @@ function normalizeRecord(item) {
 
 async function fetchPage(page) {
   const params = new URLSearchParams({ currentPage: page, filterByDatasources: "false" });
-  const response = await fetch(`${API_URL}?${params}`, { cache: "no-store" });
-  if (!response.ok) throw new Error(`FREDATO returned HTTP ${response.status}.`);
-  return response.json();
+  for (let attempt = 0; attempt < MAX_FETCH_ATTEMPTS; attempt += 1) {
+    let response;
+    try {
+      response = await fetch(`${API_URL}?${params}`, { cache: "no-store" });
+    } catch (error) {
+      if (attempt === MAX_FETCH_ATTEMPTS - 1) throw error;
+      await sleep(1000 * (2 ** attempt));
+      continue;
+    }
+
+    if (response.ok) return response.json();
+    if (response.status !== 429 || attempt === MAX_FETCH_ATTEMPTS - 1) {
+      throw new Error(`FREDATO returned HTTP ${response.status}.`);
+    }
+
+    const retryAfter = Number(response.headers.get("Retry-After"));
+    await sleep(Number.isFinite(retryAfter) && retryAfter > 0
+      ? retryAfter * 1000
+      : 1000 * (2 ** attempt));
+  }
+
+  throw new Error("FREDATO could not be reached after multiple attempts.");
 }
 
 async function loadPublications() {
@@ -149,10 +174,14 @@ async function loadPublications() {
 
   try {
     const first = await fetchPage(1);
-    const remaining = await Promise.all(
-      Array.from({ length: Math.max(0, (first.pagination?.lastPage || 1) - 1) }, (_, index) => fetchPage(index + 2)),
-    );
-    state.records = [first, ...remaining].flatMap((page) => page.results || []).map(normalizeRecord);
+    const pages = [first];
+    const lastPage = first.pagination?.lastPage || 1;
+    for (let page = 2; page <= lastPage; page += 1) {
+      elements.syncStatus.textContent = `Loading page ${page} of ${lastPage} from FREDATO`;
+      await sleep(PAGE_DELAY_MS);
+      pages.push(await fetchPage(page));
+    }
+    state.records = pages.flatMap((page) => page.results || []).map(normalizeRecord);
 
     const now = new Date();
     elements.lastUpdated.dateTime = now.toISOString();
