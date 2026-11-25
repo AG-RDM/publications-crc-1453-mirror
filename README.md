@@ -27,6 +27,10 @@ npx serve .
 
 ## GitHub Pages
 
+Die veröffentlichte Website ist unter
+[https://ag-rdm.github.io/publications-crc-1453-mirror/](https://ag-rdm.github.io/publications-crc-1453-mirror/)
+erreichbar.
+
 Der Workflow `.github/workflows/static.yml` veröffentlicht die Website
 bei jedem Push auf `main`. Im Repository muss unter **Settings → Pages** als
 Quelle **GitHub Actions** ausgewählt sein.
