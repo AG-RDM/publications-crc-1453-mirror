@@ -1,6 +1,6 @@
 const API_URL = "https://fredato-1453.imbi.uni-freiburg.de/public/api/publications/1453";
 const PAGE_DELAY_MS = 250;
-const MAX_FETCH_ATTEMPTS = 4;
+const MAX_FETCH_ATTEMPTS = 3;
 
 const FACETS = {
   year: { label: "Publication year", limit: 8, sort: (a, b) => Number(b) - Number(a) },
@@ -140,7 +140,7 @@ function normalizeRecord(item) {
 }
 
 async function fetchPage(page) {
-  const params = new URLSearchParams({ currentPage: page, filterByDatasources: "false" });
+  const params = new URLSearchParams({ currentPage: page, pageSize: "100" });
   for (let attempt = 0; attempt < MAX_FETCH_ATTEMPTS; attempt += 1) {
     let response;
     try {
